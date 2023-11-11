@@ -2,43 +2,62 @@ import tkinter as tk
 from tkinter import filedialog
 from tkinter import ttk
 from tkinter import messagebox
+from tkinter import Checkbutton
 from tkinter import simpledialog
 import time
 import threading
 from ctypes import cdll
-
+import os
 
 # Загрузка библиотек
 mylib_DEAL = cdll.LoadLibrary("./DEAL.dylib")
 mylib_ELGAMAL = cdll.LoadLibrary("./ELGAMAL.dylib")
 
+mylib_DEAL.Keys(256)
+mylib_ELGAMAL.Keys(400)
+
 def reset_fields():
     file_entry.delete(0, tk.END)
     method_choice.set("")
+    mode_choice.set("")
     output_entry.delete(0, tk.END)
 # Функция для симуляции операции шифрования/дешифрования с обновлением прогресса
 def process_file():
     selected_file_path = file_entry.get()
     selected_method = method_choice.get()
+    selected_mode = mode_choice.get()
     output_directory = output_entry.get()
     print(selected_file_path)
     print(selected_method)
+    print(selected_mode)
     print(output_directory)
+
+    mode = 2
+
+    if (selected_mode == "Шифрование"):
+        mode = 1
+    if (selected_mode == "Дешифрование"):
+        mode = 0
 
     file = selected_file_path.encode('cp866')
     directorytosave = output_directory.encode('cp866')
 
     if (selected_method == "DEAL"):
-        mylib_DEAL.Encryption(file, directorytosave, 256)
+        mylib_DEAL.Encryption(file, directorytosave, 256, mode)
         print("DEAL")
+        print(mode)
     else:
-        mylib_ELGAMAL.Encryption(file, directorytosave, 400)
+        mylib_ELGAMAL.Encryption(file, directorytosave, 400, mode)
         print("ELGAMAL")
+        print(mode)
 
 
     if not selected_file_path or not output_directory:
         messagebox.showerror("Ошибка", "Выберите файл и директорию для сохранения.")
         return
+
+    if delete_file_var.get() and os.path.exists(selected_file_path):
+        os.remove(selected_file_path)  # Удаляем файл, если галочка установлена
 
     # Симулируем операцию
     max_progress = 100
@@ -46,10 +65,10 @@ def process_file():
         time.sleep(0.05)  # Симуляция длительной операции
         progress.set(i)  # Обновляем значение прогрессбара
 
-    # Здесь вы можете добавить код для реальной операции шифрования/дешифрования.
     messagebox.showinfo("Завершено", "Действие выполнено успешно!")
     f = threading.Thread(target=reset_fields)
     f.start()
+    print("=================================")
 
 # Функция для выполнения операции в фоновом потоке
 def start_processing():
@@ -66,6 +85,14 @@ app.title("Шифрование и Дешифрование")
 frame1 = ttk.Frame(app)
 frame1.pack()
 
+# Переменная для отслеживания состояния галочки
+delete_file_var = tk.BooleanVar()
+delete_file_var.set(False)  # Устанавливаем значение по умолчанию
+
+# Создаем виджет Checkbutton
+delete_file_checkbutton = ttk.Checkbutton(frame1, text="Удалить первичный файл", variable=delete_file_var)
+delete_file_checkbutton.grid(row=5, column=0, columnspan=3)
+
 file_label = ttk.Label(frame1, text="Выберите файл:")
 file_label.grid(row=0, column=0)
 
@@ -81,22 +108,28 @@ method_label.grid(row=1, column=0)
 method_choice = ttk.Combobox(frame1, values=["DEAL", "ELGAMAL"])
 method_choice.grid(row=1, column=1)
 
+mode_label = ttk.Label(frame1, text="Выберите режим:")
+mode_label.grid(row=2, column=0)
+
+mode_choice = ttk.Combobox(frame1, values=["Шифрование", "Дешифрование"])
+mode_choice.grid(row=2, column=1)
+
 output_label = ttk.Label(frame1, text="Выберите директорию для сохранения файла:")
-output_label.grid(row=2, column=0)
+output_label.grid(row=3, column=0)
 
 output_entry = ttk.Entry(frame1, width=50)
-output_entry.grid(row=2, column=1)
+output_entry.grid(row=3, column=1)
 
 browse_output_button = ttk.Button(frame1, text="Обзор", command=lambda: output_entry.insert(0, filedialog.askdirectory(title="Выберите директорию для сохранения файла")))
-browse_output_button.grid(row=2, column=2)
+browse_output_button.grid(row=3, column=2)
 
 progress = tk.DoubleVar()
 progress.set(0)
 progress_bar = ttk.Progressbar(frame1, variable=progress, maximum=100)
-progress_bar.grid(row=3, columnspan=3)
+progress_bar.grid(row=7, columnspan=3)
 
 next_button = ttk.Button(frame1, text="Далее", command=start_processing)
-next_button.grid(row=4, columnspan=3)
+next_button.grid(row=6, columnspan=3)
 
 # Создаем вторую страницу
 frame2 = ttk.Frame(app)
@@ -116,46 +149,3 @@ frame2.pack_forget()
 
 # Запускаем оконное приложение
 app.mainloop()
-
-
-
-
-
-
-
-
-
-
-
-"""
-from ctypes import cdll
-
-# Загрузка библиотек
-mylib_DEAL = cdll.LoadLibrary("./DEAL_1.dylib")
-mylib_ELGAMAL = cdll.LoadLibrary("./ELGAMAL_1.dylib")
-
-# Работа с файлами
-file_file_txt = "/Users/muraddaudov/PycharmProjects/DEAL_AND_ELGAMAL/file.txt"
-f_file_file_txt = file_file_txt.encode('cp866')
-
-file_text_txt = "/Users/muraddaudov/PycharmProjects/DEAL_AND_ELGAMAL/text.txt"
-f_file_text_txt = file_text_txt.encode('cp866')
-
-file_img = "/Users/muraddaudov/PycharmProjects/DEAL_AND_ELGAMAL/img.jpg"
-f_file_img = file_img.encode('cp866')
-
-file_sound = "/Users/muraddaudov/PycharmProjects/DEAL_AND_ELGAMAL/sound.wav"
-f_file_sound = file_sound.encode('cp866')
-
-file_video = "/Users/muraddaudov/PycharmProjects/DEAL_AND_ELGAMAL/video.mp4"
-f_file_video = file_video.encode('cp866')
-
-# Вызов функций
-mylib_DEAL.Encryption(f_file_file_txt, 192)
-mylib_DEAL.Encryption(f_file_text_txt, 128)
-mylib_DEAL.Encryption(f_file_img, 128)
-mylib_DEAL.Encryption(f_file_sound, 256)
-mylib_DEAL.Encryption(f_file_video, 128)
-
-mylib_ELGAMAL.ElgamalEncryption(f_file_file_txt, 400)
-"""
