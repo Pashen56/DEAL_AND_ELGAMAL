@@ -892,8 +892,20 @@ extern "C" largeClass decrypt(largeClass p, largeClass x, largeClass a, largeCla
 	return (b * powModClass(a, tmp, p)) % p;
 }
 
+largeClass p;
+largeClass g;
+largeClass x;
+largeClass y;
+largeClass m, a, b;
 
-extern "C" void Encryption(char* filename, char* directory, int bitlen)
+extern "C" void Keys(int bitlen) {
+	p = GenPrime(bitlen);
+	g = GenRandomByRangeC(p);
+	x = GenRandomByRangeC(p);
+	y = powModClass(g, x, p);
+}
+
+extern "C" void Encryption(char* filename, char* directory, int bitlen, bool cipher)
 {
 	std::cout << "Filename: " << filename << std::endl;
 	std::cout << "Directory: " << directory << std::endl;
@@ -901,34 +913,33 @@ extern "C" void Encryption(char* filename, char* directory, int bitlen)
 	std::cout << "f = " << f << std::endl;
 	std::string filename2 = f.substr(f.find_last_of('/') + 1, f.length() - f.find_last_of('/'));
 	std::cout << "Filename2 = " << filename2 << std::endl;
-
-	largeClass p = GenPrime(bitlen);
-	largeClass g = GenRandomByRangeC(p);
-	largeClass x = GenRandomByRangeC(p);
-	largeClass y = powModClass(g, x, p);
-
-	largeClass m, a, b;
-	m.readFromBinFile(filename);
-	encrypt(m, p, g, y, a, b);
-
 	std::string encname = "/Encrypted_ElGamal_" + filename2;
 	std::string decname = "/Decrypted_ElGamal_" + filename2;
 
-	std::ofstream ofst(directory + encname);
-	ofst << a.str() << std::endl << b.str();
-	ofst.close();
+	std::cout << "MODE=" << cipher << std::endl;
 
-	std::ifstream ifst(directory + encname);
-	std::string a_str, b_str;
-	getline(ifst, a_str);
-	getline(ifst, b_str);
+	m.readFromBinFile(filename);
 
-	a = largeClass(a_str.c_str());
-	b = largeClass(b_str.c_str());
-	m = decrypt(p, x, a, b);
+	if (cipher == 1) {
+		encrypt(m, p, g, y, a, b);
+		std::ofstream ofst(directory + encname);
+		ofst << a.str() << std::endl << b.str();
+		ofst.close();
+	}
+	else if (cipher == 0) {
+		std::ifstream ifst(filename);
+		std::string a_str, b_str;
+		getline(ifst, a_str);
+		getline(ifst, b_str);
 
-	std::string decryptname = directory + decname;
+		a = largeClass(a_str.c_str());
+		b = largeClass(b_str.c_str());
+		m = decrypt(p, x, a, b);
 
-	m.writeToBinFile(decryptname.c_str());
+		std::string decryptname = directory + decname;
 
+		m.writeToBinFile(decryptname.c_str());
+
+		ifst.close();
+	}
 }
