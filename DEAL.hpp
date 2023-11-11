@@ -19,6 +19,8 @@ enum class Mode { ENCRYPT, DECRYPT };
 enum class CipherMode { ECB, CBC, PCBC, CFB, OFB, CTR, RandomDelta };
 static bool SubKey[16][48];
 static bool SubKeyDeal[8][64];
+const int countbits = 8, dkey = 8, countOUT = 32, countIN = 48, kilength = 48, inLength = 32, keyl = 64, blength = 64, halflength = 32, dblocklength = 128;
+const int snum = 8, srow = 4, scol = 16;
 
 const static char IP[64] = {
         58,50,42,34,26,18,10,2,60,52,44,36,28,20,12,4,
@@ -161,7 +163,7 @@ void BitToByte(char* Out, const bool* In, int bits) {
     }
 }
 
-void Substitution(bool Out[32], const bool In[48], const char S_box[8][4][16]) {
+void Substitution(bool Out[countOUT], const bool In[countIN], const char S_box[snum][srow][scol]) {
     for (char i = 0, j, k; i < 8; i++, In += 6, Out += 4) {
         j = (In[0] << 1) + In[5];
         k = (In[1] << 3) + (In[2] << 2) + (In[3] << 1) + In[4];
@@ -173,15 +175,15 @@ void Substitution(bool Out[32], const bool In[48], const char S_box[8][4][16]) {
 
 class Key {
 public:
-    virtual void SetKey(const char Key[8], char *KeyDeal, int keylength) = 0;
+    virtual void SetKey(const char Key[dkey], char* KeyDeal, int keylength) = 0;
 };
 
 class SubKeys final : public Key {
 public:
-    void SetKey(const char Key[8], char *Keydeal = nullptr, int keylength = 0) override {
+    void SetKey(const char Key[dkey], char* Keydeal = nullptr, int keylength = 0) override {
 
-        static bool K[64], * KL = K, * KR = K + 28;
-        ByteToBit(K, Key, 64);
+        static bool K[keyl], * KL = K, * KR = K + 28;
+        ByteToBit(K, Key, keyl);
         Permutation(K, K, PC1, 56);
         for (int i = 0; i < 16; i++) {
             CShift(KL, 28, LOOP[i]);
@@ -197,17 +199,17 @@ public:
 
 class Conversion {
 public:
-    virtual void F(bool In[32], const bool Ki[48]) = 0;
+    virtual void F(bool In[inLength], const bool Ki[kilength]) = 0;
 };
 
 class EncryptConversion final : public Conversion {
 public:
-    void F(bool In[32], const bool Ki[48]) override {
-        static bool MR[48];
-        Permutation(MR, In, E, 48);
-        XOR(MR, Ki, 48);
+    void F(bool In[inLength], const bool Ki[kilength]) override {
+        static bool MR[kilength];
+        Permutation(MR, In, E, kilength);
+        XOR(MR, Ki, kilength);
         Substitution(In, MR, S_BLOCK);
-        Permutation(In, In, P, 32);
+        Permutation(In, In, P, inLength);
     }
 
     virtual ~EncryptConversion() {}
@@ -217,12 +219,12 @@ public:
 
 class EncryptDecrypt {
 public:
-    virtual void Run(char Out[8], char In[8], Mode, int keylength, int round) = 0;
+    virtual void Run(char Out[countbits], char In[countbits], Mode, int keylength, int round) = 0;
 };
 
 class DES final : public EncryptDecrypt {
 public:
-    void Run(char Out[8], char In[8], Mode mode, int keylength = 0, int round = 0) override {
+    void Run(char Out[countbits], char In[countbits], Mode mode, int keylength = 0, int round = 0) override {
 
         int size = sizeof(In);
         int paddingBytes = size % 8;
@@ -232,37 +234,26 @@ public:
             }
             size += paddingBytes;
         }
-        static bool M[64], Tmp[32], * Li = M, * Ri = M + 32;
+        static bool M[blength], Tmp[halflength], * Li = M, * Ri = M + halflength;
         EncryptConversion Round;
         ByteToBit(M, In, 64);
         Permutation(M, M, IP, 64);
-        if (mode == Mode::ENCRYPT) {
-            for (int i = 0; i < 16; i++) {
-                memcpy(Tmp, Ri, 32);
-                if (keylength == 128 || keylength == 192 || keylength == 256) {
-                    Round.F(Ri, SubKeyDeal[round]);
-                }
-                else {
-                    Round.F(Ri, SubKey[i]);
-                }
-                XOR(Ri, Li, 32);
-                memcpy(Li, Tmp, 32);
+
+        if (mode == Mode::DECRYPT) { Li = M + halflength, Ri = M; }
+        for (int i = 0, j = 15; i < 16; i++, j--) {
+            memcpy(Tmp, Ri, 32);
+            if (keylength == 128 || keylength == 192 || keylength == 256) {
+                Round.F(Ri, SubKeyDeal[round]);
             }
-        }
-        if (mode == Mode::DECRYPT) {
-            for (int i = 15; i >= 0; i--) {
-                memcpy(Tmp, Li, 32);
-                if (keylength == 128 || keylength == 192 || keylength == 256) {
-                    Round.F(Li, SubKeyDeal[round]);
-                }
-                else {
-                    Round.F(Li, SubKey[i]);
-                }
-                XOR(Li, Ri, 32);
-                memcpy(Ri, Tmp, 32);
+            else {
+                if (mode == Mode::ENCRYPT) { Round.F(Ri, SubKey[i]); }
+                else if (mode == Mode::DECRYPT) { Round.F(Ri, SubKey[j]); }
             }
-            size -= static_cast<int>(Out[size - 1]);
+            XOR(Ri, Li, 32);
+            memcpy(Li, Tmp, 32);
         }
+        if (mode == Mode::DECRYPT) { size -= static_cast<int>(Out[size - 1]); }
+
         Permutation(M, M, IPR, 64);
         BitToByte(Out, M, 64);
     }
@@ -274,52 +265,40 @@ public:
 
 class DEAL final : public EncryptDecrypt {
 public:
-    void Run(char Out[8], char In[8], Mode mode, int keylength, int round = 0) override {
+    void Run(char Out[countbits], char In[countbits], Mode mode, int keylength, int round = 0) override {
 
-        static bool M[128], Tmp[64];
+        static bool M[dblocklength], Tmp[blength];
         int numberofrounds = 0;
-        ByteToBit(M, In, 128);
-        static bool * Li = M, * Ri = M + 64;
-        char p[64];
+        ByteToBit(M, In, dblocklength);
+        bool* Li = M, * Ri = M + blength;
+        char p[blength];
 
         if (keylength == 128 || keylength == 192) { numberofrounds = 6; }
         else if (keylength == 256) { numberofrounds = 8; }
 
-        if (mode == Mode::ENCRYPT) {
-            for (int i = 0; i < numberofrounds; i++) {
-                memcpy(Tmp, Ri, 64);
-                DES f;
-                BitToByte(p, Ri, 64);
-                f.Run(p, p, Mode::ENCRYPT, 128, i);
-                ByteToBit(Ri, p, 64);
-                XOR(Li, Ri, 64);
-                memcpy(Ri, Li, 64);
-                memcpy(Li, Tmp, 64);
-            }
-        }
-        else if (mode == Mode::DECRYPT) {
-            for (int i = numberofrounds - 1; i >= 0; i--) {
-                memcpy(Tmp, Li, 64);
-                DES f;
-                BitToByte(p, Li, 64);
-                f.Run(p, p, Mode::ENCRYPT, 128, i);
-                ByteToBit(Li, p, 64);
-                XOR(Ri, Li, 64);
-                memcpy(Li, Ri, 64);
-                memcpy(Ri, Tmp, 64);
-            }
+        if (mode == Mode::DECRYPT) { Li = M + blength, Ri = M; }
+
+        for (int i = 0, j = numberofrounds - 1; i < numberofrounds; i++, j--) {
+            memcpy(Tmp, Ri, 64);
+            DES f;
+            BitToByte(p, Ri, 64);
+            if (mode == Mode::ENCRYPT) { f.Run(p, p, Mode::ENCRYPT, 128, i); }
+            else if (mode == Mode::DECRYPT) { f.Run(p, p, Mode::ENCRYPT, 128, j); }
+            ByteToBit(Ri, p, 64);
+            XOR(Li, Ri, 64);
+            memcpy(Ri, Li, 64);
+            memcpy(Li, Tmp, 64);
         }
 
         BitToByte(Out, M, 128);
-
     }
 
     virtual ~DEAL() {}
 };
 
 void GetRoundKeyDeal(int numberofround, char* K, int i = 0) {
-    char cTmp[64];
-    bool bTmp[64], I[64];
+    char cTmp[blength];
+    bool bTmp[blength], I[blength];
     std::fill_n(I, 64, false);
     DES f;
 
@@ -345,11 +324,10 @@ void GetRoundKeyDeal(int numberofround, char* K, int i = 0) {
 
 class SubKeysDeal final : public Key {
 public:
-    void SetKey(const char Key[8], char *Keydeal, int keylength) override {
+    void SetKey(const char Key[dkey], char* Keydeal, int keylength) override {
 
         if (keylength == 128) {
             static char* K1 = Keydeal, * K2 = Keydeal + 64;
-
             GetRoundKeyDeal(1, K1);
             GetRoundKeyDeal(2, K2);
             GetRoundKeyDeal(3, K1, 1);
@@ -359,7 +337,6 @@ public:
         }
         else if (keylength == 192) {
             static char* K1 = Keydeal, * K2 = Keydeal + 64, * K3 = Keydeal + 128;
-
             GetRoundKeyDeal(1, K1);
             GetRoundKeyDeal(2, K2);
             GetRoundKeyDeal(3, K3);
@@ -369,7 +346,6 @@ public:
         }
         else if (keylength == 256) {
             static char* K1 = Keydeal, * K2 = Keydeal + 64, * K3 = Keydeal + 128, * K4 = Keydeal + 192;
-
             GetRoundKeyDeal(1, K1);
             GetRoundKeyDeal(2, K2);
             GetRoundKeyDeal(3, K3);
