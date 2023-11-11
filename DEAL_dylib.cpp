@@ -5,6 +5,8 @@ enum class Mode { ENCRYPT, DECRYPT };
 enum class CipherMode { ECB, CBC, PCBC, CFB, OFB, CTR, RandomDelta };
 static bool SubKey[16][48];
 static bool SubKeyDeal[8][64];
+char key2[256] = { 2, 2, 1, 0, 9, 3, 1, 4, 2, 2, 1, 0, 9, 3, 1, 4, 2, 2, 1, 0, 9, 3, 1, 4, 2, 2, 1, 0, 9, 3, 1, 4 };
+char key[8] = { 2, 2, 1, 0, 9, 3, 1, 4 };
 
 const static char IP[64] = {
 		58,50,42,34,26,18,10,2,60,52,44,36,28,20,12,4,
@@ -222,6 +224,7 @@ public:
 		EncryptConversion Round;
 		ByteToBit(M, In, 64);
 		Permutation(M, M, IP, 64);
+
 		if (mode == Mode::ENCRYPT) {
 			for (int i = 0; i < 16; i++) {
 				memcpy(Tmp, Ri, 32);
@@ -249,6 +252,7 @@ public:
 			}
 			size -= static_cast<int>(Out[size - 1]);
 		}
+
 		Permutation(M, M, IPR, 64);
 		BitToByte(Out, M, 64);
 	}
@@ -371,22 +375,22 @@ public:
 	virtual ~SubKeysDeal() {};
 };
 
+extern "C" void Keys(int keylength) {
+	SubKeys K;
+	K.SetKey(key);
 
-extern "C" void Encryption(char* filename, char* directory, int keylength) {
+	SubKeysDeal K2;
+	K2.SetKey(nullptr, key2, keylength);
+}
+
+
+extern "C" void Encryption(char* filename, char* directory, int keylength, bool cipher) {
 	std::cout << "Filename: " << filename << std::endl;
 	std::cout << "Directory: " << directory << std::endl;
 	std::string f = filename;
 	std::cout << "f = " << f << std::endl;
 	std::string filename2 = f.substr(f.find_last_of('/')+1, f.length() - f.find_last_of('/'));
 	std::cout << "Filename2 = " << filename2 << std::endl;
-	char key[8] = { 2, 2, 1, 0, 9, 3, 1, 4 };
-	SubKeys K;
-	K.SetKey(key);
-
-	char key2[256] = { 2, 2, 1, 0, 9, 3, 1, 4, 2, 2, 1, 0, 9, 3, 1, 4, 2, 2, 1, 0, 9, 3, 1, 4, 2, 2, 1, 0, 9, 3, 1, 4 };
-	//int keylength = 256;
-	SubKeysDeal K2;
-	K2.SetKey(nullptr, key2, keylength);
 
 	std::ifstream file(filename, std::ios::binary);
 	if (!file) { 
@@ -409,13 +413,16 @@ extern "C" void Encryption(char* filename, char* directory, int keylength) {
 		std::string encname = "/encrypted_" + fsname;
 		std::string decname = "/decrypted_" + fsname;
 
-		deal.Run(buffer, buffer, Mode::ENCRYPT, keylength);
-		CreateFile(directory + encname, buffer, size);
-		std::cout << filename2 << " encrypted" << std::endl;
-
-		deal.Run(buffer, buffer, Mode::DECRYPT, keylength);
-		CreateFile(directory + decname, buffer, size);
-		std::cout << filename2 << " decrypted" << std::endl;
+		if (cipher == 1) {
+			deal.Run(buffer, buffer, Mode::ENCRYPT, keylength);
+			CreateFile(directory + encname, buffer, size);
+			std::cout << filename2 << " encrypted" << std::endl;
+		}
+		else if (cipher == 0) {
+			deal.Run(buffer, buffer, Mode::DECRYPT, keylength);
+			CreateFile(directory + decname, buffer, size);
+			std::cout << filename2 << " decrypted" << std::endl;
+		}
 
 		delete[] buffer;
 	}
